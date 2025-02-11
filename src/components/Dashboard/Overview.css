@@ -1,0 +1,8 @@
+.total-row {
+  background-color: #fafafa;
+  font-weight: bold;
+}
+
+.total-row:hover > td {
+  background-color: #f0f0f0 !important;
+} 
