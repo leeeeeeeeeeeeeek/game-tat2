@@ -19,11 +19,20 @@ interface RetentionData {
   [key: string]: number | string; // 动态留存率列
 }
 
+interface GenerateOptions {
+  newUsersRange: [number, number];
+  day2RetentionRange: [number, number];
+}
+
 const Retention: React.FC<RetentionProps> = ({ statistics, onDataUpdate }) => {
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
   const [retentionDays, setRetentionDays] = useState<number[]>([2,3,4,5,6,7,10,15,20,25,30]);
   const [displayDays, setDisplayDays] = useState<number>(30);
+  const [generateOptions, setGenerateOptions] = useState<GenerateOptions>({
+    newUsersRange: [400, 1000],
+    day2RetentionRange: [15, 20],
+  });
 
   const columns: ColumnsType<RetentionData> = [
     {
@@ -76,6 +85,36 @@ const Retention: React.FC<RetentionProps> = ({ statistics, onDataUpdate }) => {
   ];
 
   const generateRetentionData = (): RetentionData[] => {
+    // 计算合计数据
+    const calculateTotal = () => {
+      const totalNewUsers = statistics.reduce((sum, stat) => sum + stat.newUsers, 0);
+      const total: RetentionData = {
+        date: '合计',
+        newUsers: totalNewUsers,
+      };
+      
+      // 计算每个留存日的加权平均值
+      retentionDays.forEach(day => {
+        const dayKey = `day${day}`;
+        const values = statistics
+          .filter(stat => typeof (stat as any)[dayKey] === 'number')
+          .map(stat => ({
+            value: (stat as any)[dayKey] as number,
+            weight: stat.newUsers
+          }));
+        
+        if (values.length > 0) {
+          const weightedSum = values.reduce((sum, { value, weight }) => sum + value * weight, 0);
+          const totalWeight = values.reduce((sum, { weight }) => sum + weight, 0);
+          total[dayKey] = weightedSum / totalWeight;
+        } else {
+          total[dayKey] = '-';
+        }
+      });
+      
+      return total;
+    };
+
     // 直接使用 statistics 中的数据
     const data = statistics.map(stat => {
       const row: RetentionData = {
@@ -86,7 +125,6 @@ const Retention: React.FC<RetentionProps> = ({ statistics, onDataUpdate }) => {
       // 添加留存率数据
       retentionDays.forEach(day => {
         const dayKey = `day${day}`;
-        // 直接使用原始数据
         row[dayKey] = (stat as any)[dayKey] ?? '-';
       });
       
@@ -94,9 +132,12 @@ const Retention: React.FC<RetentionProps> = ({ statistics, onDataUpdate }) => {
     });
     
     // 按日期倒序排序并限制显示天数
-    return data
+    const sortedData = data
       .slice(-displayDays)
       .sort((a, b) => dayjs(b.date).unix() - dayjs(a.date).unix());
+    
+    // 添加合计行
+    return [calculateTotal(), ...sortedData];
   };
 
   const getExportData = (): RetentionData[] => {
@@ -111,6 +152,38 @@ const Retention: React.FC<RetentionProps> = ({ statistics, onDataUpdate }) => {
           [key]: (stat as any)[key]
         }), {})
     }));
+  };
+
+  const generateMockData = () => {
+    const { newUsersRange, day2RetentionRange } = generateOptions;
+    const today = dayjs();
+    const mockData: DailyStatistics[] = [];
+
+    for (let i = 30; i >= 0; i--) {
+      const date = today.subtract(i, 'day').format('YYYY-MM-DD');
+      const newUsers = Math.floor(Math.random() * (newUsersRange[1] - newUsersRange[0])) + newUsersRange[0];
+      const day2Base = (Math.random() * (day2RetentionRange[1] - day2RetentionRange[0])) + day2RetentionRange[0];
+
+      const stats: any = {
+        date,
+        newUsers,
+      };
+
+      // 生成递减的留存率
+      retentionDays.forEach((day, index) => {
+        if (index === 0) {
+          stats[`day${day}`] = day2Base;
+        } else {
+          const prevDay = retentionDays[index - 1];
+          const prevRetention = stats[`day${prevDay}`];
+          stats[`day${day}`] = (prevRetention * (0.8 + Math.random() * 0.1)).toFixed(2);
+        }
+      });
+
+      mockData.push(stats);
+    }
+
+    onDataUpdate(mockData);
   };
 
   return (
@@ -172,6 +245,46 @@ const Retention: React.FC<RetentionProps> = ({ statistics, onDataUpdate }) => {
         width={400}
       >
         <Space direction="vertical" style={{ width: '100%' }}>
+          <div>
+            <div style={{ marginBottom: 8 }}>新增用户范围：</div>
+            <Space>
+              <InputNumber
+                value={generateOptions.newUsersRange[0]}
+                onChange={(value) => setGenerateOptions(prev => ({
+                  ...prev,
+                  newUsersRange: [value || 400, prev.newUsersRange[1]]
+                }))}
+              />
+              <span>-</span>
+              <InputNumber
+                value={generateOptions.newUsersRange[1]}
+                onChange={(value) => setGenerateOptions(prev => ({
+                  ...prev,
+                  newUsersRange: [prev.newUsersRange[0], value || 1000]
+                }))}
+              />
+            </Space>
+          </div>
+          <div>
+            <div style={{ marginBottom: 8 }}>2日留存范围(%)：</div>
+            <Space>
+              <InputNumber
+                value={generateOptions.day2RetentionRange[0]}
+                onChange={(value) => setGenerateOptions(prev => ({
+                  ...prev,
+                  day2RetentionRange: [value || 15, prev.day2RetentionRange[1]]
+                }))}
+              />
+              <span>-</span>
+              <InputNumber
+                value={generateOptions.day2RetentionRange[1]}
+                onChange={(value) => setGenerateOptions(prev => ({
+                  ...prev,
+                  day2RetentionRange: [prev.day2RetentionRange[0], value || 20]
+                }))}
+              />
+            </Space>
+          </div>
           <div>
             <div style={{ marginBottom: 8 }}>留存天数（用逗号分隔）：</div>
             <Input
