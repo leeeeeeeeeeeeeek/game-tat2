@@ -6,15 +6,19 @@ import type { DailyStatistics } from '../../types/statistics';
 import dayjs from 'dayjs';
 import { convertToCSV, parseCSV } from '../../utils/csvHelper';
 import type { MenuProps } from 'antd';
+import type { RetentionData } from '../../types/statistics';
+import { convertRetentionToCSV } from '../../utils/csvHelper';
+import { parseRetentionCSV, convertRetentionToDailyStats } from '../../utils/csvHelper';
 
 interface ImportExportProps {
   onDataImported: (data: DailyStatistics[]) => void;
-  currentData: DailyStatistics[];
+  currentData: DailyStatistics[] | RetentionData[];
+  type?: 'overview' | 'retention';
 }
 
 const { RangePicker } = DatePicker;
 
-const ImportExport: React.FC<ImportExportProps> = ({ onDataImported, currentData }) => {
+const ImportExport: React.FC<ImportExportProps> = ({ onDataImported, currentData, type }) => {
   const [isModalVisible, setIsModalVisible] = React.useState(false);
   const [targetRevenue, setTargetRevenue] = React.useState<number>(10000);
   const [fluctuation, setFluctuation] = React.useState<number>(20);
@@ -27,50 +31,97 @@ const ImportExport: React.FC<ImportExportProps> = ({ onDataImported, currentData
 
   // 生成随机数据
   const generateMockData = () => {
-    const startDate = dayjs().subtract(30, 'day');
-    const mockData: DailyStatistics[] = [];
+    if (type === 'retention') {
+      // 生成新增留存的模拟数据
+      const startDate = dayjs().subtract(30, 'day');
+      const mockData: DailyStatistics[] = [];
 
-    for (let i = 0; i < 30; i++) {
-      const date = startDate.add(i, 'day');
-      const baseUsers = Math.floor(Math.random() * 500) + 100;
-      const newUsers = Math.floor(Math.random() * 200) + 50;
-      const oldUsers = baseUsers;
-      const activeUsers = newUsers + oldUsers;
-      const payingUsers = Math.floor(activeUsers * (Math.random() * 0.3 + 0.1));
-      const totalRevenue = payingUsers * (Math.random() * 100 + 50);
+      for (let i = 0; i < 30; i++) {
+        const date = startDate.add(i, 'day');
+        const newUsers = Math.floor(Math.random() * 200) + 50;
+        const retentionBase = newUsers;
 
-      mockData.push({
-        date: date.format('YYYY-MM-DD'),
-        newUsers,
-        oldUsers,
-        activeUsers,
-        payingUsers,
-        totalRevenue,
-        arpu: totalRevenue / activeUsers,
-        payingArpu: totalRevenue / payingUsers,
-        activePayRate: (payingUsers / activeUsers) * 100,
-        newUserPaying: Math.floor(newUsers * (Math.random() * 0.3 + 0.1)),
-        newUserRevenue: Math.floor(totalRevenue * (Math.random() * 0.3 + 0.1)),
-        newUserArpu: 0, // 将在下面计算
-        newUserPayRate: 0, // 将在下面计算
-        oldUserPaying: 0, // 将在下面计算
-        oldUserRevenue: 0, // 将在下面计算
-        oldUserArpu: 0, // 将在下面计算
-        oldUserPayRate: 0, // 将在下面计算
-      });
+        // 生成基础数据
+        const dailyData: DailyStatistics = {
+          date: date.format('YYYY-MM-DD'),
+          newUsers,
+          oldUsers: Math.floor(retentionBase * (Math.random() * 0.3 + 0.5)), // 50-80% 的留存率
+          activeUsers: 0,
+          payingUsers: 0,
+          totalRevenue: 0,
+          arpu: 0,
+          payingArpu: 0,
+          activePayRate: 0,
+          newUserPaying: 0,
+          newUserRevenue: 0,
+          newUserArpu: 0,
+          newUserPayRate: 0,
+          oldUserPaying: 0,
+          oldUserRevenue: 0,
+          oldUserArpu: 0,
+          oldUserPayRate: 0,
+        };
 
-      // 计算衍生数据
-      const lastItem = mockData[mockData.length - 1];
-      lastItem.newUserArpu = lastItem.newUserRevenue / lastItem.newUserPaying;
-      lastItem.newUserPayRate = (lastItem.newUserPaying / lastItem.newUsers) * 100;
-      lastItem.oldUserPaying = lastItem.payingUsers - lastItem.newUserPaying;
-      lastItem.oldUserRevenue = lastItem.totalRevenue - lastItem.newUserRevenue;
-      lastItem.oldUserArpu = lastItem.oldUserRevenue / lastItem.oldUserPaying;
-      lastItem.oldUserPayRate = (lastItem.oldUserPaying / lastItem.oldUsers) * 100;
+        // 计算其他必要字段
+        dailyData.activeUsers = dailyData.newUsers + dailyData.oldUsers;
+        dailyData.payingUsers = Math.floor(dailyData.activeUsers * (Math.random() * 0.2 + 0.1));
+        dailyData.totalRevenue = dailyData.payingUsers * (Math.random() * 100 + 50);
+        dailyData.arpu = dailyData.totalRevenue / dailyData.activeUsers;
+        dailyData.payingArpu = dailyData.totalRevenue / dailyData.payingUsers;
+        dailyData.activePayRate = (dailyData.payingUsers / dailyData.activeUsers) * 100;
+
+        mockData.push(dailyData);
+      }
+
+      onDataImported(mockData);
+      message.success('已生成30天的留存模拟数据');
+    } else {
+      // 原有的数据概览模拟数据生成逻辑
+      const startDate = dayjs().subtract(30, 'day');
+      const mockData: DailyStatistics[] = [];
+
+      for (let i = 0; i < 30; i++) {
+        const date = startDate.add(i, 'day');
+        const baseUsers = Math.floor(Math.random() * 500) + 100;
+        const newUsers = Math.floor(Math.random() * 200) + 50;
+        const oldUsers = baseUsers;
+        const activeUsers = newUsers + oldUsers;
+        const payingUsers = Math.floor(activeUsers * (Math.random() * 0.3 + 0.1));
+        const totalRevenue = payingUsers * (Math.random() * 100 + 50);
+
+        mockData.push({
+          date: date.format('YYYY-MM-DD'),
+          newUsers,
+          oldUsers,
+          activeUsers,
+          payingUsers,
+          totalRevenue,
+          arpu: totalRevenue / activeUsers,
+          payingArpu: totalRevenue / payingUsers,
+          activePayRate: (payingUsers / activeUsers) * 100,
+          newUserPaying: Math.floor(newUsers * (Math.random() * 0.3 + 0.1)),
+          newUserRevenue: Math.floor(totalRevenue * (Math.random() * 0.3 + 0.1)),
+          newUserArpu: 0, // 将在下面计算
+          newUserPayRate: 0, // 将在下面计算
+          oldUserPaying: 0, // 将在下面计算
+          oldUserRevenue: 0, // 将在下面计算
+          oldUserArpu: 0, // 将在下面计算
+          oldUserPayRate: 0, // 将在下面计算
+        });
+
+        // 计算衍生数据
+        const lastItem = mockData[mockData.length - 1];
+        lastItem.newUserArpu = lastItem.newUserRevenue / lastItem.newUserPaying;
+        lastItem.newUserPayRate = (lastItem.newUserPaying / lastItem.newUsers) * 100;
+        lastItem.oldUserPaying = lastItem.payingUsers - lastItem.newUserPaying;
+        lastItem.oldUserRevenue = lastItem.totalRevenue - lastItem.newUserRevenue;
+        lastItem.oldUserArpu = lastItem.oldUserRevenue / lastItem.oldUserPaying;
+        lastItem.oldUserPayRate = (lastItem.oldUserPaying / lastItem.oldUsers) * 100;
+      }
+
+      onDataImported(mockData);
+      message.success('已生成30天的模拟数据');
     }
-
-    onDataImported(mockData);
-    message.success('已生成30天的模拟数据');
   };
 
   // 生成指定总收入的数据
@@ -138,7 +189,9 @@ const ImportExport: React.FC<ImportExportProps> = ({ onDataImported, currentData
 
   // 导出数据
   const exportData = () => {
-    const csvContent = convertToCSV(currentData);
+    const csvContent = type === 'retention' 
+      ? convertRetentionToCSV(currentData as RetentionData[])
+      : convertToCSV(currentData as DailyStatistics[]);
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -151,36 +204,11 @@ const ImportExport: React.FC<ImportExportProps> = ({ onDataImported, currentData
     message.success('数据导出成功');
   };
 
-  // 导入数据
-  const uploadProps: UploadProps = {
-    accept: '.csv',
-    showUploadList: false,
-    beforeUpload: (file) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const csvContent = e.target?.result as string;
-          const data = parseCSV(csvContent);
-          if (data.length > 0) {
-            onDataImported(data);
-            message.success('数据导入成功');
-          } else {
-            message.error('文件格式错误');
-          }
-        } catch (error) {
-          message.error('文件解析失败');
-        }
-      };
-      reader.readAsText(file);
-      return false;
-    },
-  };
-
   const items: MenuProps['items'] = [
     {
       key: 'generate',
       icon: <FileAddOutlined />,
-      label: '生成模拟数据',
+      label: type === 'retention' ? '生成留存模拟数据' : '生成模拟数据',
       onClick: generateMockData,
     },
     {
@@ -192,11 +220,41 @@ const ImportExport: React.FC<ImportExportProps> = ({ onDataImported, currentData
     {
       key: 'import',
       icon: <UploadOutlined />,
-      label: (
-        <Upload {...uploadProps}>
-          <span>导入数据</span>
-        </Upload>
-      ),
+      label: '导入数据',
+      onClick: () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.csv';
+        input.onchange = (e) => {
+          const file = (e.target as HTMLInputElement).files?.[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              try {
+                const csvContent = e.target?.result as string;
+                let data;
+                if (type === 'retention') {
+                  const retentionData = parseRetentionCSV(csvContent);
+                  data = convertRetentionToDailyStats(retentionData);
+                } else {
+                  data = parseCSV(csvContent);
+                }
+                if (data.length > 0) {
+                  onDataImported(data);
+                  message.success('数据导入成功');
+                } else {
+                  message.error('文件格式错误');
+                }
+              } catch (error) {
+                message.error('文件解析失败');
+                console.error(error);
+              }
+            };
+            reader.readAsText(file);
+          }
+        };
+        input.click();
+      }
     },
     {
       key: 'export',

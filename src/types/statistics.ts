@@ -19,6 +19,14 @@ export interface DailyStatistics {
   oldUserRevenue: number;
   oldUserArpu: number;
   oldUserPayRate: number;
+  // 留存率数据
+  [key: string]: number | string;
 }
 
-export type GameStatistics = DailyStatistics[]; 
+export type GameStatistics = DailyStatistics[];
+
+export interface RetentionData {
+  date: string;
+  newUsers: number;
+  [key: string]: number | string | '-';  // 允许值为数字、字符串或 '-'
+} 

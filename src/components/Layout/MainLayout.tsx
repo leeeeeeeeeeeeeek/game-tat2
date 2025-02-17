@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Layout, Menu } from 'antd';
-import { UserOutlined, BarChartOutlined, LogoutOutlined } from '@ant-design/icons';
+import { UserOutlined, BarChartOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
+import { useNavigate, useLocation } from 'react-router-dom';
+import type { MenuProps } from 'antd';
 
 const { Header, Sider, Content } = Layout;
 
@@ -9,6 +11,23 @@ interface MainLayoutProps {
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
+  const [collapsed, setCollapsed] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const menuItems: MenuProps['items'] = [
+    {
+      key: 'overview',
+      icon: <BarChartOutlined />,
+      label: '数据概览'
+    },
+    {
+      key: 'retention',
+      icon: <BarChartOutlined />,
+      label: '新增留存'
+    }
+  ];
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -22,16 +41,30 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       </Header>
       
       <Layout>
-        <Sider width={200}>
+        <Sider 
+          width={200} 
+          collapsible 
+          collapsed={collapsed}
+          onCollapse={setCollapsed}
+          trigger={null}
+        >
+          <div style={{ 
+            padding: '16px', 
+            textAlign: 'right', 
+            color: 'white',
+            cursor: 'pointer'
+          }}
+            onClick={() => setCollapsed(!collapsed)}
+          >
+            {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          </div>
           <Menu
             mode="inline"
-            defaultSelectedKeys={['overview']}
+            selectedKeys={[location.pathname.replace('/', '') || 'overview']}
             style={{ height: '100%' }}
-          >
-            <Menu.Item key="overview" icon={<BarChartOutlined />}>
-              数据概览
-            </Menu.Item>
-          </Menu>
+            onClick={({ key }) => navigate(`/${key}`)}
+            items={menuItems}
+          />
         </Sider>
         
         <Content style={{ padding: 24 }}>

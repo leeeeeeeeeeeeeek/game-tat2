@@ -1,4 +1,5 @@
-import { DailyStatistics } from '../types/statistics';
+import { DailyStatistics, RetentionData } from '../types/statistics';
+import dayjs from 'dayjs';
 
 // 将对象数组转换为CSV字符串
 export const convertToCSV = (data: DailyStatistics[]): string => {
@@ -57,9 +58,10 @@ export const convertToCSV = (data: DailyStatistics[]): string => {
         const value = row[key];
         // 处理数字格式
         if (typeof value === 'number') {
-          if (key.includes('Rate')) {
+          const keyStr = String(key);
+          if (keyStr.includes('Rate')) {
             return value.toFixed(2) + '%';
-          } else if (key.includes('Revenue') || key.includes('arpu') || key.includes('Arpu')) {
+          } else if (keyStr.includes('Revenue') || keyStr.includes('arpu') || keyStr.includes('Arpu')) {
             return '¥' + value.toFixed(2);
           }
           return value.toString();
@@ -107,4 +109,133 @@ export const parseCSV = (csv: string): DailyStatistics[] => {
       oldUserPayRate: cleanNumber(values[16])
     };
   });
+};
+
+// 将留存数据转换为CSV字符串
+export const convertRetentionToCSV = (data: RetentionData[]): string => {
+  if (data.length === 0) return '';
+
+  // 添加 UTF-8 BOM
+  const BOM = '\uFEFF';
+
+  // 获取所有列名
+  const columns = Object.keys(data[0]);
+
+  // 生成CSV内容
+  const csvContent = [
+    columns.join(','),
+    ...data.map(row => 
+      columns.map(col => {
+        const value = row[col];
+        if (typeof value === 'number') {
+          if (col.startsWith('day')) {
+            return value.toFixed(2) + '%';
+          }
+          return value.toString();
+        }
+        return value;
+      }).join(',')
+    )
+  ].join('\n');
+
+  return BOM + csvContent;
+};
+
+// 解析留存数据的CSV
+export const parseRetentionCSV = (csv: string): RetentionData[] => {
+  console.log('原始CSV数据:', csv);
+  // 处理不同的换行符
+  const lines = csv.trim().split(/\r\n|\n|\r/);
+  console.log('分割后的行数:', lines.length);
+  console.log('表头:', lines[0]);
+  if (lines.length < 2) throw new Error('CSV格式错误');
+  
+  // 获取表头，并确保 day 列名格式正确
+  const headers = lines[0].split(',').map(h => {
+    const header = h.trim();
+    // 保持原始列名
+    return header;
+  });
+  console.log('处理后的表头:', headers);
+  
+  // 过滤掉空行和注释行
+  const validLines = lines.slice(1)
+    .filter(line => {
+      const trimmed = line.trim();
+      console.log('处理行:', trimmed);
+      return trimmed && !trimmed.startsWith('#');
+    });
+  console.log('有效行数:', validLines.length);
+
+  const parsedData = validLines
+    .map(line => {
+      // 清理每个值并分割
+      const values = line.split(',').map(v => v.trim());
+      console.log('处理值:', values);
+      
+      // 跳过无效行
+      if (!values[0] || values.every(v => !v)) {
+        return null;
+      }
+      
+      // 确保日期格式正确
+      if (!dayjs(values[0]).isValid() && values[0] !== '合计') {
+        return null;
+      }
+      
+      const row: RetentionData = {
+        date: values[0],
+        newUsers: parseInt(values[1]),
+      };
+      
+      // 处理留存率数据
+      for (let i = 2; i < values.length; i++) {
+        const header = headers[i];
+        const value = values[i].trim();
+        // 处理空值和百分比
+        if (!value || value === '-' || value === '') {
+          row[header] = '-';
+        } else {
+          // 确保保留原始百分比值
+          const numValue = parseFloat(value.replace('%', ''));
+          if (!isNaN(numValue)) {
+            row[header] = numValue;
+          } else {
+            row[header] = '-';
+          }
+        }
+      }
+      
+      console.log('生成行:', row);
+      return row;
+    })
+    .filter(Boolean) as RetentionData[];
+
+  console.log('最终解析数据:', parsedData);
+  return parsedData;
+};
+
+// 将留存数据转换为 DailyStatistics 格式
+export const convertRetentionToDailyStats = (retentionData: RetentionData[]): DailyStatistics[] => {
+  const result: DailyStatistics[] = [];
+  
+  // 移除可能存在的合计行，我们会在最后重新计算
+  const dataWithoutTotal = retentionData.filter(row => {
+    // 保留所有非合计且有效的行
+    const isValid = row.date !== '合计' && !isNaN(row.newUsers);
+    return isValid;
+  });
+  
+  // 直接转换数据，不进行计算
+  dataWithoutTotal.forEach(row => {
+    // 直接使用原始数据
+    const baseStats = { ...row };
+    
+    result.push(baseStats as unknown as DailyStatistics);
+  });
+  
+  // 按日期倒序排序
+  result.sort((a, b) => dayjs(b.date).unix() - dayjs(a.date).unix());
+  
+  return result;
 }; 
